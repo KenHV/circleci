@@ -56,13 +56,10 @@ start_sticker() {
 
 clone_tc() {
     [ -d ${TC_PATH} ] || mkdir ${TC_PATH}
-    git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $TC_PATH/aarch64
-    git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8 $TC_PATH/aarch32
-    wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r399163.tar.gz
-    mv clang-r399163.tar.gz $TC_PATH
-    mkdir $TC_PATH/clang
-    tar xzf $TC_PATH/clang-r399163.tar.gz -C $TC_PATH/clang
-    export PATH="$TC_PATH/clang/bin:$TC_PATH/aarch64/bin:$TC_PATH/aarch32/bin:$PATH"
+    git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 $TC_PATH/aarch64
+    git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8 --depth=1 $TC_PATH/aarch32
+    git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 $TC_PATH/clang
+    export PATH="$TC_PATH/clang/clang-r399163/bin:$TC_PATH/aarch64/bin:$TC_PATH/aarch32/bin:$PATH"
     export COMPILER="AOSP Clang and GCC"
     rm -rf $ZIP_DIR && git clone https://github.com/KenHV/AnyKernel3 $ZIP_DIR
 }
