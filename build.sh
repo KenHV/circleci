@@ -1,138 +1,97 @@
 #! /bin/bash
-# Copyright (C) 2020 Starlight
-#
+# Copyright (C) 2020 KenHV
 
-export DEVICE="Liber"
-export CONFIG="vendor/liber-perf_defconfig"
-export JOBS=$(nproc --all)
-export CHANNEL_ID="$CHAT_ID"
-export TELEGRAM_TOKEN="$BOT_API_KEY"
-export TC_PATH="$HOME/toolchains"
-export ZIP_DIR="$HOME/AK3"
-export KERNEL_DIR="$HOME/kernel"
-export KBUILD_BUILD_USER="KenHV"
-export KBUILD_BUILD_HOST="Kensur"
+BRANCH=$BRANCH
+CHANNEL_ID=$CHAT_ID
+CONFIG="vendor/liber-perf_defconfig"
+DEVICE="Liber"
+JOBS=$(nproc --all)
+KBUILD_BUILD_HOST="Kensur"
+KBUILD_BUILD_USER="KenHV"
+KERNEL_DIR="$HOME/kernel"
+TC_PATH="$HOME/toolchains"
+TELEGRAM_TOKEN="$BOT_API_KEY"
+ZIP_DIR="$HOME/AK3"
 
-#==============================================================
-#===================== Function Definition ====================
-#==============================================================
-#======================= Telegram Start =======================
-#==============================================================
-
-# Upload buildlog to group
-tg_erlog()
-{
+# send buildlog
+tg_errlog() {
 	curl -F document=@"$LOG"  "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendDocument" \
-			-F chat_id=$CHANNEL_ID \
+			-F chat_id="$CHANNEL_ID" \
 			-F caption="Build ran into errors after $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds."
 }
 
-# Upload zip to channel
-tg_pushzip()
-{
+# send zip
+tg_pushzip() {
 	curl -F document=@"$ZIP"  "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendDocument" \
-			-F chat_id=$CHANNEL_ID \
+			-F chat_id="$CHANNEL_ID" \
 			-F caption="Build finished after $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds."
 }
 
-# Send Updates
+# send messages
 tg_sendinfo() {
 	curl -s "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
 		-d "parse_mode=html" \
-		-d text="${1}" \
-		-d chat_id="${CHANNEL_ID}" \
+		-d text="$1" \
+		-d chat_id="$CHANNEL_ID" \
 		-d "disable_web_page_preview=true"
 }
 
-# Send a sticker
-start_sticker() {
-    curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendSticker" \
-        -d sticker="CAACAgUAAxkBAAEBaLBfeFQfSbusJ4dR7d6wyWD6ZjAkFgACNQIAAjHMoyHGbTmtdlKXVxsE" \
-        -d chat_id=$CHANNEL_ID
-}
-
-#======================= Telegram End =========================
-#======================== Clone Stuff ==========================
-
-clone_tc() {
-    [ -d ${TC_PATH} ] || mkdir ${TC_PATH}
-    git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 $TC_PATH/aarch64
-    git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8 --depth=1 $TC_PATH/aarch32
-    git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 $TC_PATH/clang
+setup_sources() {
     export PATH="$TC_PATH/clang/clang-r399163/bin:$TC_PATH/aarch64/bin:$TC_PATH/aarch32/bin:$PATH"
     export COMPILER="AOSP Clang and GCC"
-    rm -rf $ZIP_DIR && git clone https://github.com/KenHV/AnyKernel3 $ZIP_DIR
+    rm -rf "$ZIP_DIR" && git clone https://github.com/KenHV/AnyKernel3 "$ZIP_DIR"
+    mkdir -p "$KERNEL_DIR"
+    git clone --depth=1 https://"${GITHUB_USER}"@github.com/KenHV/kernel_motorola_sm6150 -b msm-4.14 "$KERNEL_DIR"
+    cd "$KERNEL_DIR" || exit
 }
-
-clone_kernel(){
-    mkdir -p $KERNEL_DIR
-    git clone --depth=1 https://${GITHUB_USER}@github.com/KenHV/kernel_motorola_sm6150 -b msm-4.14 $KERNEL_DIR
-    cd $KERNEL_DIR
-}
-
-#==============================================================
-#=========================== Make =============================
-#========================== Kernel ============================
-#==============================================================
 
 build_kernel() {
-    DATE=`date`
     BUILD_START=$(date +"%s")
-    make O=out ARCH=arm64 "$CONFIG"
-
-    make -j$(nproc --all) O=out \
-                  ARCH=arm64 \
-                    CC=clang \
-                    CROSS_COMPILE=aarch64-linux-android- \
-                    CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-                    CLANG_TRIPLE=aarch64-linux-gnu-fi |& tee -a $LOG
-
+    make O=out ARCH=arm64 -j"$JOBS" "$CONFIG"
+    make -j"$JOBS" O=out \
+                          ARCH=arm64 \
+                          CC=clang \
+                          CROSS_COMPILE=aarch64-linux-android- \
+                          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+                          CLANG_TRIPLE=aarch64-linux-gnu-fi |& tee -a "$LOG"
     BUILD_END=$(date +"%s")
     DIFF=$(($BUILD_END - $BUILD_START))
 }
 
-#==================== Make Flashable Zip ======================
-
 make_flashable() {
-    cd $ZIP_DIR
+    cd "$ZIP_DIR" || exit
     git clean -fd
-    cp $KERN_IMG $ZIP_DIR/zImage
+    cp "$KERN_IMG" "$ZIP_DIR"/zImage
     ZIP_NAME=Kensur-$DEVICE-$KERN_VER-$COMMIT_SHA.zip
-    zip -r9 $ZIP_NAME * -x .git README.md *placeholder
-    ZIP=$(find $ZIP_DIR/*.zip)
+    zip -r9 "$ZIP_NAME" * -x ./.git README.md ./*placeholder
+    ZIP=$(find "$ZIP_DIR"/*.zip)
     tg_pushzip
 }
 
-#========================= Build Log ==========================
-
-mkdir -p $HOME/build
+mkdir -p "$HOME"/build
 export LOG=$HOME/build/log.txt
 
-#===================== End of function ========================
-#======================= definition ===========================
-
-tg_sendinfo "$(echo -e "Triggered build for $DEVICE.")"
-clone_tc
-clone_kernel
+tg_sendinfo "Triggered build for $DEVICE."
+setup_sources
 
 COMMIT=$(git log --pretty=format:'"%h : %s"' -1)
 COMMIT_SHA=$(git rev-parse --short HEAD)
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-KERN_IMG=$KERNEL_DIR/out/arch/arm64/boot/Image.gz-dtb
 CONFIG_PATH=$KERNEL_DIR/arch/arm64/configs/$CONFIG
-KERN_VER=$(echo "$(make kernelversion)")
+KERN_IMG=$KERNEL_DIR/out/arch/arm64/boot/Image.gz-dtb
+KERN_VER=$(make kernelversion)
 
-tg_sendinfo "$(echo -e "Threads: <tt>$JOBS</tt>\n
-Branch: <tt>$BRANCH</tt>\n
-Commit: <tt>$COMMIT</tt>")"
+tg_sendinfo "Threads: <tt>$JOBS</tt>
+Branch: <tt>$BRANCH</tt>
+Commit: <tt>$COMMIT</tt>"
 
 build_kernel
 
 # Check if kernel img is there or not and make flashable accordingly
 
 if ! [ -a "$KERN_IMG" ]; then
-	tg_erlog
+	tg_errlog
 	exit 1
 else
 	make_flashable
 fi
+

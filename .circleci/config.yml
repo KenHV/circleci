@@ -2,9 +2,8 @@ version: 2.1
 jobs:
   compile:
    docker:
-      - image: starlight2834/ci_docker:latest
+      - image: kenhv/kernel:latest
    steps:
-      - run: apt-get update -y && apt-get install openssh-client git
       - checkout
       - run: bash build.sh
 workflows:
